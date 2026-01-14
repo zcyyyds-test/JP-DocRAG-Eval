@@ -205,3 +205,19 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+.vscode/
+.idea/
+
+.DS_Store
+
+venv/
+.venv/
+env/
+
+# 忽略生成的中间产物 (BM25, 向量库等)
+artifacts/*
+!artifacts/.gitkeep
+
+# 忽略本地跑出来的具体报告 (你可以选择性手动 add，默认忽略)
+reports/*.csv
