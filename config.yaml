@@ -1,0 +1,11 @@
+llm:
+  provider: "google_genai"
+  model: "gemini-2.0-flash-exp"
+  api_key_env: "GEMINI_API_KEY"
+  # base_url not needed for native sdk
+  temperature: 0.0
+  max_tokens: 1024
+
+retrieval:
+  top_k: 10
+  rerank: false

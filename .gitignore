@@ -219,5 +219,9 @@ env/
 artifacts/*
 !artifacts/.gitkeep
 
+# 忽略具体数据，但保留文件夹结构
+data/docs/*
+!data/docs/.gitkeep
+
 # 忽略本地跑出来的具体报告 (你可以选择性手动 add，默认忽略)
 reports/*.csv
