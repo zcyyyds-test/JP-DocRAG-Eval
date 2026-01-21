@@ -225,3 +225,7 @@ data/docs/*
 
 # 忽略本地跑出来的具体报告 (你可以选择性手动 add，默认忽略)
 reports/*.csv
+data/qa/generated_qa.jsonl
+reports/eval_details.jsonl
+reports/failure_cases.md
+reports/final_report.md
