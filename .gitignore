@@ -229,3 +229,4 @@ data/qa/generated_qa.jsonl
 reports/eval_details.jsonl
 reports/failure_cases.md
 reports/final_report.md
+data/feedback.jsonl

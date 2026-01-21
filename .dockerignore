@@ -1,0 +1,24 @@
+
+# Ignore git files
+.git
+.gitignore
+
+# Ignore local virtual env
+.venv
+venv
+env
+
+# Ignore large data directories (we mount these via docker-compose volumes)
+data/
+artifacts/
+
+# Ignore Python cache
+__pycache__
+*.pyc
+
+# Ignore Mac system files
+.DS_Store
+
+# Ignore deployment helper scripts (optional, but cleaner)
+package_upload.sh
+project_deploy.zip
