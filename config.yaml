@@ -1,6 +1,6 @@
 llm:
   provider: "google_genai"
-  model: "gemini-2.0-flash-exp"
+  model: "gemini-3-flash-preview"
   api_key_env: "GEMINI_API_KEY"
   # base_url not needed for native sdk
   temperature: 0.0
