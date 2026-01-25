@@ -43,11 +43,8 @@ def merge_chunks_to_pages(results: List[str], chunk_map: Dict[str, Dict]) -> Lis
         page_groups[key].append(c)
         
     # Reconstruct text for each page
-    # Since we chunked by sliding window, simple "join" might duplicate text if overlap is high.
-    # But since we want "Context", providing the full page text (or joined chunks) is fine.
-    # A smart way: If we have multiple chunks from same page, just take the 'text' of the chunks 
-    # and join them with '...'. Or if we had original page text map, use that.
-    # For now, let's join chunk texts with ' [...] ' to indicate breaks, or just newlines.
+    # Reconstruct text for each page from chunks. 
+    # Concatenate chunk texts with separators. Overlaps are accepted for context continuity.
     
     merged_pages = []
     for (doc_id, page), chunks in page_groups.items():
@@ -55,9 +52,7 @@ def merge_chunks_to_pages(results: List[str], chunk_map: Dict[str, Dict]) -> Lis
         # chunk_id format: doc:p:c
         chunks.sort(key=lambda x: x["chunk_id"])
         
-        # Simple merge: join texts. 
-        # Ideally we should merge overlapping strings, but that's complex.
-        # Concatenation is safe context.
+        # Concatenate chunks for page context.
         merged_text = "\n...\n".join([c["text"] for c in chunks])
         
         merged_pages.append({
@@ -73,19 +68,33 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", type=str, required=True)
     ap.add_argument("--top_k", type=int, default=10)
+    ap.add_argument("--use_rerank", action="store_true", help="Enable Cross-Encoder Reranking")
     args = ap.parse_args()
     
     # 1. Init
     print("Loading Retriever...")
-    retriever = Retriever(method="hybrid") # Use strongest method
+    retriever = Retriever(method="hybrid")
     chunk_map = load_chunks_map(Path("artifacts/chunks.jsonl"))
     llm = LLMGenerator()
     
     # 2. Retrieve
     print(f"Retrieving for: {args.query}")
-    # Normalize handled in retriever, but explicit is good
     q_norm = normalize_query(args.query)
-    results = retriever.search(q_norm, k=args.top_k) # returns keys
+    
+    # Retrieve expanded candidate set for reranking
+    initial_k = args.top_k * 5 if args.use_rerank else args.top_k
+    results = retriever.search(q_norm, k=initial_k)
+    
+    if args.use_rerank:
+        print("Reranking results with CrossEncoder...")
+        from src.jprag.rerank import JapaneseCrossEncoder
+        reranker = JapaneseCrossEncoder()
+        
+        # Extract CIDs
+        candidate_cids = [cid for cid, score in results]
+        # Rerank
+        reranked_results = reranker.rerank(q_norm, candidate_cids, chunk_map, top_k=args.top_k)
+        results = reranked_results
     
     # 3. Merge & Dedupe
     # results is list of (cid, score) tuple

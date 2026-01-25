@@ -12,6 +12,7 @@ import platform
 import subprocess
 
 from src.jprag.retrieve import Retriever
+from src.jprag.rerank import JapaneseCrossEncoder
 
 # ... (rest of imports)
 
@@ -129,6 +130,9 @@ TRANSLATIONS = {
         "chart_title": "Method Comparison",
         "raw_data": "Raw Data Table",
         "no_data": "No evaluation results found. Run eval_run.py first.",
+        "use_rerank": "Enable Cross-Encoder Rerank (Slower but more accurate)",
+        "arena_rerank_compare": "Reranker Impact Check",
+        "arena_rerank_btn": "Compare With vs Without Rerank",
     },
     "日本語": {
         "title": "日本電力・産業ドキュメント RAG",
@@ -171,6 +175,9 @@ TRANSLATIONS = {
         "chart_title": "検索手法の比較",
         "raw_data": "詳細データ",
         "no_data": "評価結果が見つかりません。先に eval_run.py を実行してください。",
+        "use_rerank": "Reranker (Cross-Encoder) を有効化",
+        "arena_rerank_compare": "Reranker 有無の比較",
+        "arena_rerank_btn": "Rerank効果を確認する",
     },
 }
 
@@ -187,10 +194,7 @@ def _find_existing_file(candidate_paths):
 
 def build_doc_index_from_csv(csv_path: Path):
     """
-    Build:
-      doc_meta: doc_id -> display name
-      doc_sources: doc_id -> {"title","filename","pdf_path","url"}
-    Robust to missing columns.
+    Index documents from CSV.
     """
     doc_meta = {}
     doc_sources = {}
@@ -229,10 +233,7 @@ def build_doc_index_from_csv(csv_path: Path):
 
 def resolve_pdf_path(doc_id: str, doc_sources: dict) -> Optional[Path]:
     """
-    Resolve PDF location for a doc_id. Priority:
-      1) doc_sources[doc_id]["pdf_path"] if exists
-      2) filename in common roots
-      3) doc_id.pdf in common roots
+    Locate PDF file for proper documentation display.
     """
     info = doc_sources.get(doc_id, {})
     pdf_path_raw = (info.get("pdf_path") or "").strip()
@@ -268,13 +269,16 @@ def resolve_pdf_path(doc_id: str, doc_sources: dict) -> Optional[Path]:
 
 @st.cache_resource
 def load_resources():
-    retriever_instance = Retriever(method="hybrid")  # load all indices
+    retriever_instance = Retriever(method="hybrid")
     chunk_map_path = Path("artifacts/chunks.jsonl")
     chunk_map = load_chunks_map(chunk_map_path) if chunk_map_path.exists() else {}
 
     doc_meta, doc_sources = build_doc_index_from_csv(Path("data/docs/docs_list.csv"))
     llm_instance = LLMGenerator()
-    return retriever_instance, chunk_map, doc_meta, doc_sources, llm_instance
+    
+    # Init Reranker (lazy load model)
+    reranker_instance = JapaneseCrossEncoder()
+    return retriever_instance, chunk_map, doc_meta, doc_sources, llm_instance, reranker_instance
 
 
 # =========================================================
@@ -282,8 +286,7 @@ def load_resources():
 # =========================================================
 def render_reference_cards(refs, chunk_map, doc_meta, doc_sources, T, key_prefix="ref"):
     """
-    Render refs with text only.
-    No PDF open/download buttons as requested.
+    Render reference cards.
     """
     for i, ref in enumerate(refs):
         doc_id = ref.get("doc_id")
@@ -341,25 +344,39 @@ def _as_ranked_list(res):
     return res
 
 
-def run_rag_pipeline(prompt, method, top_k, chunk_map, doc_meta, llm, weights=None):
+def run_rag_pipeline(prompt, method, top_k, chunk_map, doc_meta, llm, weights=None, reranker=None, use_rerank=False):
     """
     Full RAG run: retrieve -> merge -> build context -> generate
     Return answer + latency + raw_results + refs_data
     """
     q_norm = normalize_query(prompt)
 
-    # Retrieve (avoid mutable global state)
+    # Retrieve
     if method == "hybrid":
         b_res = _as_ranked_list(retriever.search_bm25(q_norm, top_k=100))
         d_res = _as_ranked_list(retriever.search_dense(q_norm, top_k=100))
         w_b, w_d = weights if weights else (2.0, 1.0)
-        raw_results = retriever.fusion_rrf([b_res, d_res], k=60, weights=[w_b, w_d])[:top_k]
+        # Get more candidates for RRF before reranking
+        raw_results = retriever.fusion_rrf([b_res, d_res], k=60, weights=[w_b, w_d])
     elif method == "dense":
-        raw_results = _as_ranked_list(retriever.search_dense(q_norm, top_k=top_k))[:top_k]
+        raw_results = _as_ranked_list(retriever.search_dense(q_norm, top_k=top_k * 5))
     elif method == "bm25":
-        raw_results = _as_ranked_list(retriever.search_bm25(q_norm, top_k=top_k))[:top_k]
+        raw_results = _as_ranked_list(retriever.search_bm25(q_norm, top_k=top_k * 5))
     else:
-        raw_results = _as_ranked_list(retriever.search(q_norm, k=top_k))[:top_k]
+        raw_results = _as_ranked_list(retriever.search(q_norm, k=top_k * 5))
+
+    # Rerank candidates if enabled.
+    if reranker and use_rerank:
+        # Limit candidates for reranking efficiency.
+        candidates = raw_results[: min(len(raw_results), 50)]
+        candidate_cids = [cid for cid, _ in candidates]
+        
+        # Rerank
+        reranked = reranker.rerank(q_norm, candidate_cids, chunk_map, top_k=top_k)
+        raw_results = reranked
+    else:
+        # Just slice top_k
+        raw_results = raw_results[:top_k]
 
     # Context
     top_cids = [cid for cid, _score in raw_results]
@@ -383,7 +400,7 @@ def run_rag_pipeline(prompt, method, top_k, chunk_map, doc_meta, llm, weights=No
     ans = llm.generate(system_prompt, user_prompt_text)
     latency = time.time() - start_time
 
-    # Save lightweight refs (store chunk_id only; text from chunk_map on render)
+    # Store lightweight references for rendering.
     refs_data = []
     for cid, score in raw_results:
         c = chunk_map.get(cid)
@@ -410,7 +427,7 @@ def run_rag_pipeline(prompt, method, top_k, chunk_map, doc_meta, llm, weights=No
 # Initialization
 # =========================================================
 with st.spinner("Initializing system..."):
-    retriever, chunk_map, doc_meta, doc_sources, llm = load_resources()
+    retriever, chunk_map, doc_meta, doc_sources, llm, reranker = load_resources()
 
 # init viewer state
 if "viewer" not in st.session_state:
@@ -450,6 +467,9 @@ with st.sidebar:
             w_dense = st.slider("Dense Weight", 0.0, 5.0, 1.0, 0.1)
         else:
             w_bm25, w_dense = 1.0, 1.0
+            
+        use_rerank = st.toggle(T["use_rerank"], value=False)
+
 
     st.markdown("---")
     st.warning(T["disclaimer_title"])
@@ -515,6 +535,8 @@ if mode == "chat":
                     doc_meta=doc_meta,
                     llm=llm,
                     weights=[w_bm25, w_dense],
+                    reranker=reranker,
+                    use_rerank=use_rerank,
                 )
 
             st.markdown(res["answer"])
@@ -607,12 +629,35 @@ elif mode == "arena":
                         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 
                 # Visual distinction: Primary for Good, Default for Bad
-                if c_a.button(f"👍 {T['vote_up']}", key=f"up_{method}", type="primary", use_container_width=True):
-                    log_feedback(st.session_state.arena_prompt, {method: "up"}, method)
-                    st.toast(f"Voted UP for {method}")
                 if c_b.button(f"👎 {T['vote_down']}", key=f"down_{method}", use_container_width=True):
                     log_feedback(st.session_state.arena_prompt, {method: "down"}, "none")
                     st.toast(f"Voted DOWN for {method}")
+
+        # --- New Section: Rerank Impact ---
+        st.markdown("---")
+        st.subheader(T["arena_rerank_compare"])
+        
+        if st.button(T["arena_rerank_btn"]):
+             with st.spinner(T["thinking"]):
+                c_base, c_rerank = st.columns(2)
+                
+                # Run Base (Hybrid)
+                res_base = run_rag_pipeline(prompt, "hybrid", 5, chunk_map, doc_meta, llm, weights=[2.0, 1.0], reranker=reranker, use_rerank=False)
+                # Run Rerank (Hybrid + Rerank)
+                res_rerank = run_rag_pipeline(prompt, "hybrid", 5, chunk_map, doc_meta, llm, weights=[2.0, 1.0], reranker=reranker, use_rerank=True)
+                
+                with c_base:
+                    st.markdown("**Hybrid (No Rerank)**")
+                    st.markdown(res_base["answer"])
+                    with st.expander(T["sources"]):
+                        render_reference_cards(res_base["references"], chunk_map, doc_meta, doc_sources, T, "base_new")
+                        
+                with c_rerank:
+                    st.markdown("**Hybrid + Rerank 🚀**")
+                    st.markdown(res_rerank["answer"])
+                    with st.expander(T["sources"]):
+                        render_reference_cards(res_rerank["references"], chunk_map, doc_meta, doc_sources, T, "rerank_new")
+
 
 
 

@@ -39,14 +39,14 @@ def write_jsonl(path: Path, obj: Dict):
         f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 def split_to_units(text: str) -> List[str]:
-    # prefer paragraphs first
+    # Split by paragraphs first
     text = text.strip()
     if not text:
         return []
     paras = [p.strip() for p in MULTI_NL.split(text) if p.strip()]
     units: List[str] = []
     for p in paras:
-        # if paragraph too long, split by sentence punctuation
+        # Split long paragraphs by sentences
         if len(p) > 1500:
             sents = [s.strip() for s in SENT_SPLIT.split(p) if s.strip()]
             units.extend(sents if sents else [p])
@@ -69,7 +69,7 @@ def make_chunks_from_units(units: List[str], max_chars: int, overlap_chars: int,
         if not buf:
             buf = u
             continue
-        # try append
+        # Attempt to append unit
         cand = buf + "\n\n" + u
         if len(cand) <= max_chars:
             buf = cand
@@ -79,7 +79,7 @@ def make_chunks_from_units(units: List[str], max_chars: int, overlap_chars: int,
 
     flush()
 
-    # add overlap (character-level tail overlap)
+    # Apply character-level overlap
     if overlap_chars > 0 and len(chunks) >= 2:
         overlapped = [chunks[0]]
         for i in range(1, len(chunks)):

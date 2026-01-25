@@ -4,14 +4,14 @@ import math
 from collections import Counter, defaultdict
 
 def char_ngrams(text: str, n: int = 3) -> List[str]:
-    # Remove spaces but keep Japanese punctuation; BM25 works fine with this.
+    # Remove spaces. Japanese punctuation is preserved.
     s = (text or "").replace("\u3000", " ").replace(" ", "")
     if len(s) <= n:
         return [s] if s else []
     return [s[i:i+n] for i in range(0, len(s)-n+1)]
 
 class BM25:
-    # lightweight BM25 (Okapi) implementation
+    # BM25 Okapi implementation.
     def __init__(self, corpus_tokens: List[List[str]], k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
         self.b = b
@@ -26,7 +26,7 @@ class BM25:
                 df[term] += 1
         self.idf = {}
         for term, dfi in df.items():
-            # classic BM25 idf
+            # Standard BM25 IDF
             self.idf[term] = math.log(1 + (self.N - dfi + 0.5) / (dfi + 0.5))
 
         self.tf = [Counter(toks) for toks in corpus_tokens]

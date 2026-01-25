@@ -7,9 +7,9 @@ def load_config(path: str = "config.yaml"):
         # Fallback default
         return {
             "llm": {
-                "provider": "openai",
-                "model": "gpt-3.5-turbo",
-                "api_key_env": "OPENAI_API_KEY"
+                "provider": "gemini",
+                "model": "gemini-3-flash-preview",
+                "api_key_env": "GEMINI_API_KEY"
             }
         }
     with open(path, "r", encoding="utf-8") as f:
