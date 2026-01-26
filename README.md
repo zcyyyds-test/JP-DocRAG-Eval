@@ -3,6 +3,17 @@
 A lightweight, evaluation-ready RAG (Retrieval-Augmented Generation) system optimized for Japanese technical documents. 
 It demonstrates a full pipeline including ingestion, hybrid retrieval (BM25 + Dense), cross-encoder reranking, and LLM-based generation.
 
+## Architecture
+
+![figure](D:\JP-DocRAG-Eval\figure.png)
+
+The system follows a robust RAG pipeline tailored for Japanese documents:
+
+1.  **Hybrid Retrieval**: Combines **Dense Retrieval** (Bi-Encoder embeddings) and **Sparse Retrieval** (BM25 with character 3-grams). 
+2.  **Cross-Encoder Reranking**: Refines the initial candidates to ensure high relevance.
+3.  **Context Aggregation**: Merges retrieved chunks into coherent **Page Contexts** to provide complete information to the LLM.
+4.  **Citation-Aware Generation**: The LLM generates answers with strict `[doc:page]` citations based *only* on the provided context.
+
 ## File Structure
 
 - **`web_demo.py`**: The main Streamlit application. Provides a chat interface, retrieval arena for comparing methods, and an evaluation dashboard.
