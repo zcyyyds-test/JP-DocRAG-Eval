@@ -125,26 +125,27 @@ def join_lines(lines: List[str]) -> str:
         return "".join(rebuilt).strip()
     return text.strip()
 
+RE_DIGITS = re.compile(r"\d+")
+
 def collect_header_footer_candidates(pages: List[Dict], top_k: int = 2, bottom_k: int = 2) -> Counter:
-    """
-    Collect frequent top/bottom lines per doc to remove as headers/footers.
-    """
     c = Counter()
     for p in pages:
-        lines = [ln.strip() for ln in normalize_text(p.get("text","")).split("\n")]
+        lines = [ln.strip() for ln in normalize_text(p.get("text", "")).split("\n")]
         lines = [ln for ln in lines if ln]
         if not lines:
             continue
-        for ln in lines[:top_k]:
-            c[ln] += 1
-        for ln in lines[-bottom_k:]:
-            c[ln] += 1
+        
+        candidates = lines[:top_k] + lines[-bottom_k:]
+        for ln in candidates:
+            masked_ln = RE_DIGITS.sub("#", ln)
+            c[masked_ln] += 1
     return c
 
 def remove_headers_footers(lines: List[str], frequent: set) -> List[str]:
     out = []
     for ln in lines:
-        if ln.strip() in frequent:
+        masked_ln = RE_DIGITS.sub("#", ln.strip())
+        if masked_ln in frequent:
             continue
         out.append(ln)
     return out
