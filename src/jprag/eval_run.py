@@ -52,6 +52,7 @@ def run_eval(args):
     
     # Prepare detailed log
     details_path = Path("reports/eval_details.jsonl")
+    details_path.parent.mkdir(parents=True, exist_ok=True)
     f_details = details_path.open("w", encoding="utf-8")
     
     # Prepare failure cases content

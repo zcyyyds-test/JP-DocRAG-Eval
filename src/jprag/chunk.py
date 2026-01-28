@@ -56,38 +56,58 @@ def split_to_units(text: str) -> List[str]:
 
 def make_chunks_from_units(units: List[str], max_chars: int, overlap_chars: int, min_chars: int) -> List[str]:
     chunks: List[str] = []
-    buf = ""
-
-    def flush():
-        nonlocal buf
-        t = buf.strip()
-        if len(t) >= min_chars:
-            chunks.append(t)
-        buf = ""
-
+    
+    # Buffer for current chunk units
+    current_units: List[str] = []
+    current_len = 0
+    
     for u in units:
-        if not buf:
-            buf = u
-            continue
-        # Attempt to append unit
-        cand = buf + "\n\n" + u
-        if len(cand) <= max_chars:
-            buf = cand
-        else:
-            flush()
-            buf = u
+        u_len = len(u)
+        # Assuming "\n\n" separator
+        sep_len = 2 if current_len > 0 else 0
+        
+        # Check if adding this unit would exceed max_chars
+        # If current_units is empty, we must add it regardless (even if huge)
+        if current_units and (current_len + sep_len + u_len > max_chars):
+            # Flush current buffer
+            chunk_text = "\n\n".join(current_units)
+            if len(chunk_text) >= min_chars:
+                chunks.append(chunk_text)
+            
+            # Prepare overlap for the next chunk
+            # Keep units from the end until we roughly hit overlap_chars
+            overlap_buf: List[str] = []
+            overlap_len = 0
+            
+            # Walk backwards
+            for prev in reversed(current_units):
+                p_len = len(prev)
+                # Separator for the overlap buffer (if not first item)
+                p_sep = 2 if overlap_len > 0 else 0
+                
+                if overlap_len + p_sep + p_len > overlap_chars and overlap_buf:
+                    # Already have enough overlap
+                    break
+                
+                overlap_buf.insert(0, prev)
+                overlap_len += p_sep + p_len
+                
+            current_units = overlap_buf
+            current_len = overlap_len
+            
+            # Recalculate sep for the new incoming unit
+            sep_len = 2 if current_len > 0 else 0
 
-    flush()
-
-    # Apply character-level overlap
-    if overlap_chars > 0 and len(chunks) >= 2:
-        overlapped = [chunks[0]]
-        for i in range(1, len(chunks)):
-            prev = overlapped[-1]
-            tail = prev[-overlap_chars:] if len(prev) > overlap_chars else prev
-            overlapped.append((tail + "\n" + chunks[i]).strip())
-        chunks = overlapped
-
+        # Append incoming unit
+        current_units.append(u)
+        current_len += sep_len + u_len
+        
+    # Flush remaining
+    if current_units:
+        chunk_text = "\n\n".join(current_units)
+        if len(chunk_text) >= min_chars:
+            chunks.append(chunk_text)
+            
     return chunks
 
 def main():
