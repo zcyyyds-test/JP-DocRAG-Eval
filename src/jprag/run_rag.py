@@ -106,7 +106,7 @@ def main():
     for p in pages:
         context_str += f"Source {p['ref_id']}:\n{p['text']}\n\n"
         
-    system_prompy = """
+    system_prompt = """
 あなたは日本の電力インフラ・規制の専門家です。
 与えられた「参考資料」ダケに基づいて、ユーザーの質問に答えてください。
 
@@ -130,7 +130,7 @@ def main():
     print("Generating Answer...")
     # print(f"DEBUG PROMPT:\n{user_prompt}\n")
     
-    ans = llm.generate(system_prompy, user_prompt)
+    ans = llm.generate(system_prompt, user_prompt)
     
     print("\n" + "="*40)
     print(f"Question: {args.query}")
